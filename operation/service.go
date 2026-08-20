@@ -68,8 +68,11 @@ func (s *Service) Submit(ctx context.Context, request Request) (Operation, bool,
 	if err := request.Validate(); err != nil {
 		return Operation{}, false, err
 	}
-	admissionManifest := policy.ProjectStoredAdmissionInput(request.Manifest)
-	decision := s.admission.Evaluate(admissionManifest, s.currentLoad())
+	// Evaluate uses the manifest's decoded (logical) peak so admission matches the
+	// memory weight merger workers acquire from the byte budget. Projecting to
+	// stored bytes would admit a gzip segment that fails to acquire resources
+	// once decompressed on the worker.
+	decision := s.admission.Evaluate(request.Manifest, s.currentLoad())
 	if !decision.Allowed {
 		return Operation{}, false, fmt.Errorf("%w: %s", policy.ErrRejected, decision.Reason)
 	}

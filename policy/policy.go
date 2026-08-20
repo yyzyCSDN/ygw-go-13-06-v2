@@ -80,10 +80,14 @@ func (a *Admission) Evaluate(manifest segmentmerge.Manifest, load Load) Decision
 		decision.Reason = reason
 		return decision
 	}
-	peak := storedPeakWeight(manifest)
+	// Admission and execution must share one peak caliber: merger workers acquire
+	// the decoded (logical) size from the byte budget, so admission estimates the
+	// decoded peak too. Sizing by stored bytes would admit a compressed segment
+	// whose decoded size then fails to fit the budget on the worker.
+	peak := decodedPeakWeight(manifest)
 	available := availableResidentBytes(a.limits.MaxResidentBytes, load.ResidentBytes)
 	if peak > available {
-		decision.Reason = "largest stored segment exceeds available byte budget"
+		decision.Reason = "largest decoded segment exceeds available byte budget"
 		return decision
 	}
 	decision.Allowed = true
@@ -112,11 +116,16 @@ func (a *Admission) basicAdmissionReason(manifest segmentmerge.Manifest, load Lo
 	return ""
 }
 
-func storedPeakWeight(manifest segmentmerge.Manifest) int64 {
+// decodedPeakWeight reports the largest decoded (resident) segment size, matching the
+// memory weight that merger workers acquire from the byte budget (segment.LogicalSize).
+// Using the decoded peak keeps admission consistent with execution so that a compressed
+// segment whose stored size fits the budget cannot be admitted and then fail to acquire
+// resources once decompressed on the worker.
+func decodedPeakWeight(manifest segmentmerge.Manifest) int64 {
 	var peak int64
 	for _, segment := range manifest.Segments {
-		if segment.StoredSize > peak {
-			peak = segment.StoredSize
+		if segment.LogicalSize > peak {
+			peak = segment.LogicalSize
 		}
 	}
 	return peak
@@ -136,16 +145,6 @@ func admissionConcurrency(available, peak int64, segments int) int {
 	byMemory := int(available / max64(peak, 1))
 	bySegments := int(math.Ceil(math.Sqrt(float64(segments))))
 	return minInt(8, maxInt(1, minInt(byMemory, bySegments)))
-}
-
-// ProjectStoredAdmissionInput makes the policy's storage estimate explicit for callers.
-func ProjectStoredAdmissionInput(input segmentmerge.Manifest) segmentmerge.Manifest {
-	projected := input
-	projected.Segments = append([]segmentmerge.Segment(nil), input.Segments...)
-	for index := range projected.Segments {
-		projected.Segments[index].LogicalSize = projected.Segments[index].StoredSize
-	}
-	return projected
 }
 
 type FailureClass string
