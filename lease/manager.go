@@ -122,6 +122,28 @@ func (m *Manager) Release(resource, owner string, fence uint64) error {
 	return nil
 }
 
+// Validate is used at commit time, not just at dispatch time. This second
+// fence check closes the gap where a slow worker outlives its ownership.
+func (m *Manager) Validate(resource, owner string, fence uint64) error {
+	now := m.clock.Now()
+	m.mu.RLock()
+	current, ok := m.leases[resource]
+	m.mu.RUnlock()
+	if !ok {
+		return ErrNotFound
+	}
+	if current.Owner != owner {
+		return ErrOwnerMismatch
+	}
+	if current.Fence != fence {
+		return ErrFenceMismatch
+	}
+	if current.Expired(now) {
+		return ErrExpired
+	}
+	return nil
+}
+
 func (m *Manager) Get(resource string) (Lease, bool) {
 	now := m.clock.Now()
 	m.mu.RLock()

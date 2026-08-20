@@ -72,6 +72,9 @@ func (s *Service) Run(ctx context.Context, id string) (Operation, error) {
 		class := classifyFailure(mergeErr)
 		return s.finishFailure(context.Background(), running, updated.Revision, mergeErr, class)
 	}
+	if err := s.leases.Validate(leaseValue.Resource, leaseValue.Owner, leaseValue.Fence); err != nil {
+		return s.finishFailure(context.Background(), running, updated.Revision, err, policy.FailureTransient)
+	}
 	completed, err := running.transition(StateCompleted, s.config.Clock.Now().UTC())
 	if err != nil {
 		return Operation{}, err
