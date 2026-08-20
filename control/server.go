@@ -52,20 +52,5 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.listener == nil {
 		return fmt.Errorf("server has not started")
 	}
-	s.httpServer.SetKeepAlivesEnabled(false)
-	_ = s.listener.Close()
-	_ = s.httpServer.Close()
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	deadline := time.Now().Add(100 * time.Millisecond)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			if time.Now().After(deadline) {
-				return nil
-			}
-		}
-	}
+	return s.httpServer.Shutdown(ctx)
 }

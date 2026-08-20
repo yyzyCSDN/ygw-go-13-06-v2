@@ -101,7 +101,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) run(w http.ResponseWriter, r *http.Request) {
-	op, err := h.service.Run(context.Background(), r.PathValue("id"))
+	ctx, cancel := context.WithTimeout(r.Context(), h.timeout)
+	defer cancel()
+	op, err := h.service.Run(ctx, r.PathValue("id"))
 	if errors.Is(err, operation.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", err)
 		return
