@@ -72,7 +72,6 @@ func (c *Catalog) Create(record OperationRecord) (OperationRecord, bool, error) 
 	if _, exists := c.operations[record.ID]; exists {
 		return OperationRecord{}, false, fmt.Errorf("operation %s already exists", record.ID)
 	}
-	record = projectDurableRecord(record)
 	record.Revision = 1
 	c.operations[record.ID] = record
 	c.idempotency[record.IdempotencyKey] = record.ID
@@ -102,18 +101,9 @@ func (c *Catalog) Update(record OperationRecord, expectedRevision uint64) (Opera
 	if current.FileID != record.FileID || current.IdempotencyKey != record.IdempotencyKey {
 		return OperationRecord{}, fmt.Errorf("immutable operation identity changed")
 	}
-	record = projectDurableRecord(record)
 	record.Revision = current.Revision + 1
 	c.operations[record.ID] = record
 	return record, nil
-}
-
-func projectDurableRecord(record OperationRecord) OperationRecord {
-	projected := record
-	if projected.State == "retrying" {
-		projected.RetryAt = nil
-	}
-	return projected
 }
 
 func (c *Catalog) PutArtifact(record ArtifactRecord) error {

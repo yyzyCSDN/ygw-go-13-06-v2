@@ -189,26 +189,11 @@ func cloneRequest(input Request) Request {
 }
 
 func toRecord(op Operation) catalog.OperationRecord {
-	record := catalog.OperationRecord{ID: op.ID, Partition: op.Partition, FileID: op.Manifest.FileID, IdempotencyKey: op.IdempotencyKey, State: string(op.State), Attempt: op.Attempt, Fence: op.Fence, Owner: op.Owner, Completed: op.Progress.CompletedSegments, Total: op.Progress.TotalSegments, LastError: op.LastError, RetryAt: op.RetryAt, Result: op.Result, CreatedAt: op.CreatedAt, UpdatedAt: op.UpdatedAt}
-	return projectRetryState(record)
+	return catalog.OperationRecord{ID: op.ID, Partition: op.Partition, FileID: op.Manifest.FileID, IdempotencyKey: op.IdempotencyKey, State: string(op.State), Attempt: op.Attempt, Fence: op.Fence, Owner: op.Owner, Completed: op.Progress.CompletedSegments, Total: op.Progress.TotalSegments, LastError: op.LastError, RetryAt: op.RetryAt, Result: op.Result, CreatedAt: op.CreatedAt, UpdatedAt: op.UpdatedAt}
 }
 
 func fromRecord(record catalog.OperationRecord, manifest segmentmerge.Manifest) Operation {
-	return Operation{ID: record.ID, Partition: record.Partition, IdempotencyKey: record.IdempotencyKey, Manifest: manifest, State: State(record.State), Attempt: record.Attempt, Fence: record.Fence, Owner: record.Owner, Progress: Progress{CompletedSegments: record.Completed, TotalSegments: record.Total, UpdatedAt: record.UpdatedAt}, Result: record.Result, LastError: record.LastError, RetryAt: retryDeadline(record), CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt}
-}
-
-func projectRetryState(record catalog.OperationRecord) catalog.OperationRecord {
-	if record.State == string(StateRetrying) {
-		record.RetryAt = nil
-	}
-	return record
-}
-
-func retryDeadline(record catalog.OperationRecord) *time.Time {
-	if record.State == string(StateRetrying) {
-		return nil
-	}
-	return record.RetryAt
+	return Operation{ID: record.ID, Partition: record.Partition, IdempotencyKey: record.IdempotencyKey, Manifest: manifest, State: State(record.State), Attempt: record.Attempt, Fence: record.Fence, Owner: record.Owner, Progress: Progress{CompletedSegments: record.Completed, TotalSegments: record.Total, UpdatedAt: record.UpdatedAt}, Result: record.Result, LastError: record.LastError, RetryAt: record.RetryAt, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt}
 }
 
 func marshalPayload(value any) json.RawMessage {
