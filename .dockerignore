@@ -1,0 +1,6 @@
+.git
+.claude
+*.jsonl
+evidence
+private_oracles
+workspaces
