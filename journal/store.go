@@ -74,7 +74,7 @@ func joinLines(lines [][]byte) []byte {
 }
 
 func encodeEnvelope(sequence uint64, event Event) (Envelope, []byte, error) {
-	eventBytes, err := checksumBytes(event)
+	eventBytes, err := json.Marshal(event)
 	if err != nil {
 		return Envelope{}, nil, err
 	}
@@ -118,7 +118,7 @@ func decodeStream(ctx context.Context, reader io.Reader, operationID string) (Re
 }
 
 func verifyEnvelope(envelope Envelope) error {
-	encoded, err := checksumBytes(envelope.Event)
+	encoded, err := json.Marshal(envelope.Event)
 	if err != nil {
 		return err
 	}
