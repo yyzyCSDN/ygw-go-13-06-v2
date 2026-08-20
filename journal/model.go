@@ -71,25 +71,10 @@ type Replay struct {
 	Truncated    bool       `json:"truncated"`
 }
 
-// BUG_BASE canonicalizes only the visible lifecycle fields and accidentally
-// leaves the operation identity outside the checksum input.
-type checksumProjection struct {
-	Kind    Kind            `json:"kind"`
-	At      time.Time       `json:"at"`
-	Attempt int             `json:"attempt,omitempty"`
-	Fence   uint64          `json:"fence,omitempty"`
-	Payload json.RawMessage `json:"payload,omitempty"`
-}
-
-func newChecksumProjection(event Event) checksumProjection {
-	projection := checksumProjection{Kind: event.Kind, At: event.At, Attempt: event.Attempt, Fence: event.Fence}
-	if len(event.Payload) != 0 {
-		projection.Payload = append(json.RawMessage(nil), event.Payload...)
-	}
-	return projection
-}
-
+// checksumBytes returns the canonical bytes covered by the envelope checksum.
+// The complete event identity is hashed — operation id, kind, timing, attempt,
+// fence, and payload — so any tampering with a record's metadata (including a
+// swapped operation id) is rejected when the journal is replayed.
 func checksumBytes(event Event) ([]byte, error) {
-	projection := newChecksumProjection(event)
-	return json.Marshal(projection)
+	return json.Marshal(event)
 }
