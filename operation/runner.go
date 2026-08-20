@@ -72,6 +72,15 @@ func (s *Service) Run(ctx context.Context, id string) (Operation, error) {
 		class := classifyFailure(mergeErr)
 		return s.finishFailure(context.Background(), running, updated.Revision, mergeErr, class)
 	}
+	// Publish boundary: a worker whose lease has expired or been superseded by
+	// a newer fencing token must not publish the completed operation, the
+	// artifact or the completed journal event. Verify authority before
+	// transitioning to completed; a stale worker fails the attempt instead so a
+	// fresh lease can redo the (idempotent) merge.
+	if _, err := s.leases.Verify(leaseValue.Resource, leaseValue.Owner, leaseValue.Fence); err != nil {
+		cause := fmt.Errorf("publish boundary blocked, lease %s: %w", leaseValue.Resource, err)
+		return s.finishFailure(context.Background(), running, updated.Revision, cause, policy.FailureTransient)
+	}
 	completed, err := running.transition(StateCompleted, s.config.Clock.Now().UTC())
 	if err != nil {
 		return Operation{}, err

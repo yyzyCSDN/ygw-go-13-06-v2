@@ -122,6 +122,31 @@ func (m *Manager) Release(resource, owner string, fence uint64) error {
 	return nil
 }
 
+// Verify reports whether owner/fence still holds an unexpired lease on resource.
+// It is the publish-boundary check: a worker whose lease has expired or been
+// superseded by a newer fencing token must not publish completed operations,
+// artifacts or completion journal events. Unlike Renew, Verify is read-only and
+// never sweeps the matched entry, so a concurrent holder observes no mutation.
+func (m *Manager) Verify(resource, owner string, fence uint64) (Lease, error) {
+	now := m.clock.Now()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	current, ok := m.leases[resource]
+	if !ok {
+		return Lease{}, ErrNotFound
+	}
+	if current.Owner != owner {
+		return Lease{}, ErrOwnerMismatch
+	}
+	if current.Fence != fence {
+		return Lease{}, ErrFenceMismatch
+	}
+	if current.Expired(now) {
+		return Lease{}, ErrExpired
+	}
+	return current, nil
+}
+
 func (m *Manager) Get(resource string) (Lease, bool) {
 	now := m.clock.Now()
 	m.mu.RLock()
