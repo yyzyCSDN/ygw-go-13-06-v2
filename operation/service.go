@@ -68,8 +68,7 @@ func (s *Service) Submit(ctx context.Context, request Request) (Operation, bool,
 	if err := request.Validate(); err != nil {
 		return Operation{}, false, err
 	}
-	admissionManifest := policy.ProjectStoredAdmissionInput(request.Manifest)
-	decision := s.admission.Evaluate(admissionManifest, s.currentLoad())
+	decision := s.admission.Evaluate(request.Manifest, s.currentLoad())
 	if !decision.Allowed {
 		return Operation{}, false, fmt.Errorf("%w: %s", policy.ErrRejected, decision.Reason)
 	}

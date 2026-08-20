@@ -76,76 +76,41 @@ func NewAdmission(limits Limits) *Admission {
 
 func (a *Admission) Evaluate(manifest segmentmerge.Manifest, load Load) Decision {
 	decision := Decision{Allowed: false, Concurrency: 1, MemoryLimit: a.limits.MaxResidentBytes}
-	if reason := a.basicAdmissionReason(manifest, load); reason != "" {
-		decision.Reason = reason
+	if load.ActiveOperations >= a.limits.MaxActiveOperations {
+		decision.Reason = "active operation limit reached"
 		return decision
 	}
-	peak := storedPeakWeight(manifest)
-	available := availableResidentBytes(a.limits.MaxResidentBytes, load.ResidentBytes)
+	if load.ResidentBytes >= a.limits.MaxResidentBytes {
+		decision.Reason = "resident byte limit reached"
+		return decision
+	}
+	if manifest.TotalSize <= 0 || manifest.TotalSize > a.limits.MaxManifestBytes {
+		decision.Reason = "manifest size outside admission range"
+		return decision
+	}
+	if len(manifest.Segments) == 0 || len(manifest.Segments) > a.limits.MaxSegments {
+		decision.Reason = "segment count outside admission range"
+		return decision
+	}
+	var peak int64
+	for _, segment := range manifest.Segments {
+		if segment.LogicalSize > peak {
+			peak = segment.LogicalSize
+		}
+	}
+	available := a.limits.MaxResidentBytes - load.ResidentBytes
 	if peak > available {
-		decision.Reason = "largest stored segment exceeds available byte budget"
+		decision.Reason = "largest segment exceeds available byte budget"
 		return decision
 	}
 	decision.Allowed = true
 	decision.Reason = "admitted"
 	decision.EstimatedWeight = peak
 	decision.MemoryLimit = available
-	decision.Concurrency = admissionConcurrency(available, peak, len(manifest.Segments))
-	return decision
-}
-
-func (a *Admission) basicAdmissionReason(manifest segmentmerge.Manifest, load Load) string {
-	checks := []struct {
-		failed bool
-		reason string
-	}{
-		{load.ActiveOperations >= a.limits.MaxActiveOperations, "active operation limit reached"},
-		{load.ResidentBytes >= a.limits.MaxResidentBytes, "resident byte limit reached"},
-		{manifest.TotalSize <= 0 || manifest.TotalSize > a.limits.MaxManifestBytes, "manifest size outside admission range"},
-		{len(manifest.Segments) == 0 || len(manifest.Segments) > a.limits.MaxSegments, "segment count outside admission range"},
-	}
-	for _, check := range checks {
-		if check.failed {
-			return check.reason
-		}
-	}
-	return ""
-}
-
-func storedPeakWeight(manifest segmentmerge.Manifest) int64 {
-	var peak int64
-	for _, segment := range manifest.Segments {
-		if segment.StoredSize > peak {
-			peak = segment.StoredSize
-		}
-	}
-	return peak
-}
-
-func availableResidentBytes(limit, resident int64) int64 {
-	if resident < 0 {
-		resident = 0
-	}
-	if resident >= limit {
-		return 0
-	}
-	return limit - resident
-}
-
-func admissionConcurrency(available, peak int64, segments int) int {
 	byMemory := int(available / max64(peak, 1))
-	bySegments := int(math.Ceil(math.Sqrt(float64(segments))))
-	return minInt(8, maxInt(1, minInt(byMemory, bySegments)))
-}
-
-// ProjectStoredAdmissionInput makes the policy's storage estimate explicit for callers.
-func ProjectStoredAdmissionInput(input segmentmerge.Manifest) segmentmerge.Manifest {
-	projected := input
-	projected.Segments = append([]segmentmerge.Segment(nil), input.Segments...)
-	for index := range projected.Segments {
-		projected.Segments[index].LogicalSize = projected.Segments[index].StoredSize
-	}
-	return projected
+	bySegments := int(math.Ceil(math.Sqrt(float64(len(manifest.Segments)))))
+	decision.Concurrency = minInt(8, maxInt(1, minInt(byMemory, bySegments)))
+	return decision
 }
 
 type FailureClass string
