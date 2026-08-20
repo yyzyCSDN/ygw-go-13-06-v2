@@ -17,6 +17,13 @@ func (s *Service) Run(ctx context.Context, id string) (Operation, error) {
 	if err != nil {
 		return Operation{}, err
 	}
+	// Reject terminal operations before acquiring a lease or mutating state, so a
+	// finished operation can never be restarted and cannot republish its terminal
+	// outcome. Doing this here (rather than only inside transition) also keeps a
+	// busy lease on a sibling operation from masking the terminal rejection.
+	if op.Terminal() {
+		return Operation{}, ErrTerminal
+	}
 	leaseValue, err := s.leases.Acquire("merge/"+op.Manifest.FileID, s.config.WorkerID, s.config.LeaseTTL)
 	if err != nil {
 		return Operation{}, err

@@ -108,6 +108,10 @@ func (h *Handler) run(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", err)
 		return
 	}
+	if errors.Is(err, operation.ErrTerminal) {
+		writeError(w, http.StatusConflict, "already_terminal", err)
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusConflict, "run_failed", err)
 		return

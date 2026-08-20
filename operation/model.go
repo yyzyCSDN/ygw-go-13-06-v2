@@ -21,8 +21,8 @@ const (
 )
 
 var (
-	ErrNotFound          = errors.New("merge operation not found")
-	ErrTerminal          = errors.New("merge operation is terminal")
+	ErrNotFound = errors.New("merge operation not found")
+	ErrTerminal = errors.New("merge operation is terminal")
 )
 
 type Request struct {
@@ -84,9 +84,36 @@ func (o Operation) CanStart() bool {
 	return o.State == StateAccepted || o.State == StateRetrying
 }
 
+// allowedTransitions enumerates the legal state-machine edges. Terminal states
+// (completed, failed, cancelled) intentionally have no outgoing transitions, so
+// any attempt to restart a finished operation or republish its terminal outcome
+// is rejected by transition.
+var allowedTransitions = map[State]map[State]bool{
+	StateAccepted: {
+		StateRunning:   true,
+		StateFailed:    true,
+		StateCancelled: true,
+	},
+	StateRunning: {
+		StateCompleted: true,
+		StateFailed:    true,
+		StateRetrying:  true,
+		StateCancelled: true,
+	},
+	StateRetrying: {
+		StateRunning:   true,
+		StateFailed:    true,
+		StateCancelled: true,
+	},
+}
+
 func (o Operation) transition(next State, now time.Time) (Operation, error) {
-	// BUG_BASE: transition validation was removed, so terminal operations can
-	// restart and republish completed outcomes.
+	if o.Terminal() {
+		return Operation{}, fmt.Errorf("%w: cannot transition %q -> %q", ErrTerminal, o.State, next)
+	}
+	if !allowedTransitions[o.State][next] {
+		return Operation{}, fmt.Errorf("invalid transition %q -> %q", o.State, next)
+	}
 	o.State = next
 	o.UpdatedAt = now.UTC()
 	return o, nil
