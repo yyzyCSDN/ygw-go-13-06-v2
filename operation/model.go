@@ -23,6 +23,7 @@ const (
 var (
 	ErrNotFound          = errors.New("merge operation not found")
 	ErrTerminal          = errors.New("merge operation is terminal")
+	ErrInvalidTransition = errors.New("invalid merge operation transition")
 )
 
 type Request struct {
@@ -85,8 +86,18 @@ func (o Operation) CanStart() bool {
 }
 
 func (o Operation) transition(next State, now time.Time) (Operation, error) {
-	// BUG_BASE: transition validation was removed, so terminal operations can
-	// restart and republish completed outcomes.
+	allowed := false
+	switch o.State {
+	case StateAccepted:
+		allowed = next == StateRunning || next == StateCancelled || next == StateFailed
+	case StateRunning:
+		allowed = next == StateCompleted || next == StateRetrying || next == StateFailed || next == StateCancelled
+	case StateRetrying:
+		allowed = next == StateRunning || next == StateCancelled || next == StateFailed
+	}
+	if !allowed {
+		return Operation{}, fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, o.State, next)
+	}
 	o.State = next
 	o.UpdatedAt = now.UTC()
 	return o, nil

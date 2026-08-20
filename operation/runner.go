@@ -17,6 +17,12 @@ func (s *Service) Run(ctx context.Context, id string) (Operation, error) {
 	if err != nil {
 		return Operation{}, err
 	}
+	if !op.CanStart() {
+		if op.Terminal() {
+			return Operation{}, ErrTerminal
+		}
+		return Operation{}, fmt.Errorf("%w: cannot start from %s", ErrInvalidTransition, op.State)
+	}
 	leaseValue, err := s.leases.Acquire("merge/"+op.Manifest.FileID, s.config.WorkerID, s.config.LeaseTTL)
 	if err != nil {
 		return Operation{}, err
